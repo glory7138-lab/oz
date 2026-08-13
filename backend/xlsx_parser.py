@@ -62,12 +62,13 @@ def parse_xlsx(filepath) -> dict:
     for w in col_widths:
         col_x_offsets.append(col_x_offsets[-1] + w)
         
-    # 4. 행 높이 스케일링 적용 (비율 유지)
+    # 4. 행 높이 스케일링 적용 (비율 고정)
+    Y_SCALE_FACTOR = 1.0
     row_heights = []
     for r in range(1, max_row + 1):
         rd = ws.row_dimensions.get(r)
         height = rd.height if rd and rd.height else 15.0
-        row_heights.append(height * scale_factor)
+        row_heights.append(height * Y_SCALE_FACTOR)
         
     row_y_offsets = [0]
     for h in row_heights:
@@ -146,9 +147,44 @@ def parse_xlsx(filepath) -> dict:
             data_x_bounds.add(round(c["left"], 1))
             data_x_bounds.add(round(c["left"] + c["width"], 1))
             
+    # [NEW] 엑셀 12~30의 연속된 형태처럼, DataRow와 동일한 그리드(X좌표)를 가지는 반복행들 중
+    # <DATASET> 태그가 없는 행들은 렌더링 대상에서 제외(1칸만 남기기 위함)
+    repeating_rows = set()
+    for r in range(1, max_row + 1):
+        if r == data_row_num:
+            continue
+        row_cells = [c for c in cells_data if c["row"] == r]
+        if not row_cells:
+            continue
+            
+        row_x_bounds = set()
+        for c in row_cells:
+            row_x_bounds.add(round(c["left"], 1))
+            row_x_bounds.add(round(c["left"] + c["width"], 1))
+            
+        if data_x_bounds:
+            matching_bounds = row_x_bounds.intersection(data_x_bounds)
+            match_ratio = len(matching_bounds) / len(data_x_bounds) if len(data_x_bounds) > 0 else 0
+            # DataRow와 거의 완벽하게(90% 이상) 그리드가 일치하면 반복행으로 간주 (헤더나 푸터는 병합으로 인해 일치율이 보통 다름)
+            if match_ratio >= 0.9:
+                repeating_rows.add(r)
+                
+    # cells_data에서 반복행 제거
+    cells_data = [c for c in cells_data if c["row"] not in repeating_rows]
+        
+    # 데이터 행의 셀 너비 경계선(X 좌표) 추출
+    data_x_bounds = set()
+    for c in cells_data:
+        if c["row"] == data_row_num:
+            data_x_bounds.add(round(c["left"], 1))
+            data_x_bounds.add(round(c["left"] + c["width"], 1))
+            
     table_header_start = data_row_num
     
     for r in range(data_row_num - 1, 0, -1):
+        if r in repeating_rows:
+            continue
+            
         row_cells = [c for c in cells_data if c["row"] == r]
         has_borders = any(c["has_border"] for c in row_cells)
         if not has_borders:
@@ -168,7 +204,7 @@ def parse_xlsx(filepath) -> dict:
             match_ratio = 1.0
             
         # 일치율이 50% 미만이면 Page Header 영역의 큰 병합셀이라고 간주하고 TableHeader 편입 중단
-        is_first_header_row = (r == data_row_num - 1)
+        is_first_header_row = (table_header_start == data_row_num)
         if not is_first_header_row and match_ratio < 0.5:
             break
             
@@ -247,6 +283,12 @@ def parse_xlsx(filepath) -> dict:
         "footer": {
             "height": max(footer_height, 20),
             "labels": footer_cells
+        },
+        "debug_info": {
+            "table_header_start": table_header_start,
+            "data_row_num": data_row_num,
+            "footer_start": footer_start,
+            "max_row": max_row
         },
         "total_width": col_x_offsets[-1]
     }

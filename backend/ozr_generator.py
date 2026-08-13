@@ -141,6 +141,15 @@ def _build_data_band_with_table(body_config: dict, content_width: float, odi_nam
         if m:
             dataset_name = m.group(1)
             col_name = m.group(2)
+        else:
+            # R25 mapping for missing tags in template
+            mapping = {
+                0: "DOC_NO", 1: "REV_NO", 2: "TITLE", 3: "CLIENT_DOC_NO", 4: "DOC_CLASS",
+                5: "A1", 6: "A2", 7: "A3", 8: "A4", 9: "A5", 10: "A6", 11: "A7",
+                12: "A8", 13: "A9", 14: "A10", 15: "A11", 16: "A12", 17: "A13"
+            }
+            if idx in mapping:
+                col_name = mapping[idx]
         
         datasets.add(dataset_name)
         field_items.append(str(idx))
@@ -155,7 +164,7 @@ def _build_data_band_with_table(body_config: dict, content_width: float, odi_nam
             f'DASHOFFSETLEFT="0" DASHOFFSETTOP="0" DASHOFFSETRIGHT="0" DASHOFFSETBOTTOM="0" '
             f'HALIGN="{h_align}" '
             f'AUTOSIZE="true" AUTOFONTSIZE="smallerOnly" NULLTYPE="5" '
-            f'PRIORLABELNAME="Root" TABLEINDEX="{idx}"/>'
+            f'PRIORLABELNAME="Root" TABLEINDEX="{idx}">{col_name}</OZGROUPLABEL>'
         )
         
     field_items_str = "#%$oz*&amp;^".join(field_items)
