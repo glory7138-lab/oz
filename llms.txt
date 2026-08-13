@@ -1,0 +1,32 @@
+# OZ Report Generator - LLM Wiki
+
+Welcome, AI Agent! This is the `llms.txt` file for the OZ Report Generator project.
+This file serves as your primary entry point to understand the project architecture, tech stack, and development guidelines.
+
+## 🚨 1. Critical Rules & Single Source of Truth (SoT)
+- **100% OZR Structure Parity**: The generated OZR files must perfectly mimic the XML structure of human-created files (like `PLA0501_R25.ozr`). This includes the exact tag sequence (`VERSION`, `BASICLABEL`, `DEFAULTLABEL`, `EVENT`, `REPORTINFO`, `OZPARAMETERTOOLBARS`, `OZFONTDESC`, `OZODILIST`, `OZGRIDINFO`, `OZFORMIDINFO`).
+- **Dynamic Grid Parsing**: NEVER hardcode row numbers (like "Row 10 is the header"). Always use dynamic heuristics (like tracing vertical grid alignments and match ratios from the data row) to separate `PageHeaderBand`, `DataBand/TableTitle`, and `PageFooterBand`.
+
+## 2. Project Overview
+- **Name**: OZ Report Generator (Excel to OZR/ODI Converter)
+- **Goal**: Automatically convert Excel layout templates and datasets into valid OZ Report files (`.ozr`, `.odi`) without manual drag-and-drop in the OZ Designer.
+- **Key Features**:
+  - Smart separation of Excel rows into 3-tier bands (PageHeader, DataBand, PageFooter).
+  - Landscape orientation injection (`OnStartUp` script).
+  - Web UI for previewing and generating reports.
+
+## 3. Tech Stack
+- **Backend**: Python (FastAPI, `openpyxl` for Excel parsing, XML string manipulation).
+- **Frontend**: Next.js, React.
+- **Core Components**: `main.py`, `ozr_generator.py`, `xlsx_parser.py`.
+
+## 4. Source of Truth (SoT) Documentation
+Do NOT guess the project rules. Refer to `docs/`:
+- `docs/INDEX.md`: Overall document index.
+- `docs/00_SOT/product-scope.md`: Scope, constraints, and parsing rules.
+- `docs/00_SOT/collaboration-rules.md`: Collaboration, Git & PR protocols.
+- `docs/90_Worklog/`: Daily work history and change tracking.
+
+## 5. Agentic Workflow Instructions
+- **Start Trigger ("여기서 할게")**: Check `llms.txt`, read `docs/INDEX.md`, and review the latest file in `docs/90_Worklog/` to sync context.
+- **Finish Trigger ("pr 생성해" / "마무리 해")**: Write work history to `docs/90_Worklog/WORK_HISTORY_YYYYMMDD.md`, commit code/docs, and push to remote branch.
