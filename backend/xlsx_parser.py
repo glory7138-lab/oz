@@ -21,27 +21,53 @@ def parse_xlsx(filepath) -> dict:
     wb = openpyxl.load_workbook(file_bytes, data_only=True)
     ws = wb.active
     
-    # 컬럼 폭 계산
+    # 1. 실제 사용된 최대 컬럼 찾기 (값이 있거나 테두리가 있는 컬럼)
+    max_used_col = 1
+    max_row = ws.max_row or 1
+    max_col_candidate = ws.max_column or 1
+    for r in range(1, max_row + 1):
+        for c in range(1, max_col_candidate + 1):
+            cell = ws.cell(row=r, column=c)
+            has_val = cell.value is not None and str(cell.value).strip() != ""
+            has_border = False
+            if cell.border:
+                if cell.border.left.style or cell.border.right.style or cell.border.top.style or cell.border.bottom.style:
+                    has_border = True
+            if has_val or has_border:
+                if c > max_used_col:
+                    max_used_col = c
+
+    # 2. 사용된 영역 기준 스케일 계수(Scale Factor) 계산
+    # 목표 가로 사이즈: 806.018 (A4 가로 842 - 좌우 여백)
+    raw_col_widths = []
+    for c in range(1, max_used_col + 1):
+        col_letter = get_column_letter(c)
+        dim = ws.column_dimensions.get(col_letter)
+        raw_col_widths.append(dim.width if dim and dim.width else 8.43)
+        
+    raw_total_width = sum(raw_col_widths)
+    TARGET_WIDTH = 806.018
+    scale_factor = TARGET_WIDTH / raw_total_width if raw_total_width > 0 else 1.0
+
+    # 3. 컬럼 폭 스케일링 적용 (빈 컬럼 포함 전체)
     col_widths = []
-    max_col = ws.max_column or 1
-    for c in range(1, max_col + 1):
+    for c in range(1, max_col_candidate + 1):
         col_letter = get_column_letter(c)
         dim = ws.column_dimensions.get(col_letter)
         width = dim.width if dim and dim.width else 8.43
-        col_widths.append(width * EXCEL_COL_WIDTH_TO_OZ)
+        col_widths.append(width * scale_factor)
         
     # 누적 X 좌표 (컬럼별)
     col_x_offsets = [0]
     for w in col_widths:
         col_x_offsets.append(col_x_offsets[-1] + w)
         
-    # 누적 Y 좌표 (로우별)
-    max_row = ws.max_row or 1
+    # 4. 행 높이 스케일링 적용 (비율 유지)
     row_heights = []
     for r in range(1, max_row + 1):
         rd = ws.row_dimensions.get(r)
         height = rd.height if rd and rd.height else 15.0
-        row_heights.append(height * EXCEL_ROW_HEIGHT_TO_OZ)
+        row_heights.append(height * scale_factor)
         
     row_y_offsets = [0]
     for h in row_heights:
@@ -58,7 +84,7 @@ def parse_xlsx(filepath) -> dict:
     cells_data = []
     
     for r in range(1, max_row + 1):
-        for c in range(1, max_col + 1):
+        for c in range(1, max_col_candidate + 1):
             if (r, c) in merged_map:
                 mr = merged_map[(r, c)]
                 # 병합된 영역의 Top-Left 셀이 아니면 무시 (그리기 중복 방지)
