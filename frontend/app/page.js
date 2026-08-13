@@ -18,8 +18,10 @@ export default function Home() {
   const [generatedFilename, setGeneratedFilename] = useState(null);
   const [reportLayout, setReportLayout] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isUploadingOzr, setIsUploadingOzr] = useState(false);
   const fileInputRef = useRef(null);
   const progressRef = useRef(null);
+  const ozrFileInputRef = useRef(null);
 
   // 파일 목록 조회
   useEffect(() => {
@@ -185,6 +187,41 @@ export default function Home() {
     }
   };
 
+  // OZR 다이렉트 뷰어 (업로드)
+  const handleOzrDirectUpload = async (file) => {
+    if (!file) return;
+    if (!file.name.match(/\.ozr$/i)) {
+      alert('OZR 파일만 업로드 가능합니다.');
+      return;
+    }
+    
+    setIsUploadingOzr(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const res = await fetch(`${API_BASE}/api/preview-ozr`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'OZR 파싱 실패');
+      }
+      
+      const data = await res.json();
+      setGeneratedFilename(file.name);
+      setReportLayout(data);
+      setIsModalOpen(true);
+    } catch (err) {
+      alert(`OZR 뷰어 오류: ${err.message}`);
+    } finally {
+      setIsUploadingOzr(false);
+      if (ozrFileInputRef.current) ozrFileInputRef.current.value = '';
+    }
+  };
+
   // 새로 만들기
   const resetAll = () => {
     setFile(null);
@@ -238,9 +275,28 @@ export default function Home() {
 
       {/* File Info Banner */}
       {fileInfo && (
-        <div className="info-banner info-banner-blue">
-          📁 현재 PLA0501 시리즈: OZR {fileInfo.total_ozr}개, ODI {fileInfo.total_odi}개
-          &nbsp;|&nbsp; 다음 번호: <strong>{fileInfo.next_ozr_filename}</strong>
+        <div className="info-banner info-banner-blue" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            📁 현재 PLA0501 시리즈: OZR {fileInfo.total_ozr}개, ODI {fileInfo.total_odi}개
+            &nbsp;|&nbsp; 다음 번호: <strong>{fileInfo.next_ozr_filename}</strong>
+          </div>
+          <div>
+            <button 
+              className="btn btn-secondary" 
+              style={{ padding: '6px 12px', fontSize: '13px', margin: 0 }}
+              onClick={() => ozrFileInputRef.current?.click()}
+              disabled={isUploadingOzr}
+            >
+              {isUploadingOzr ? '열기 중...' : '🔍 OZR 원본 열기 (비교용)'}
+            </button>
+            <input
+              ref={ozrFileInputRef}
+              type="file"
+              accept=".ozr"
+              style={{ display: 'none' }}
+              onChange={(e) => handleOzrDirectUpload(e.target.files[0])}
+            />
+          </div>
         </div>
       )}
 

@@ -306,8 +306,6 @@ async def get_report_preview(filename: str):
     생성된 OZR 파일의 레포트 레이아웃 정보를 JSON으로 반환합니다.
     프론트엔드에서 시각적으로 렌더링하기 위한 데이터.
     """
-    import re as regex
-    
     filepath = os.path.join(REPORT_DIR, filename)
     if not os.path.exists(filepath) or not filename.lower().endswith('.ozr'):
         raise HTTPException(status_code=404, detail="OZR 파일을 찾을 수 없습니다.")
@@ -315,59 +313,80 @@ async def get_report_preview(filename: str):
     try:
         with open(filepath, "rb") as f:
             data = f.read()
-        xml_str = data[24:].decode('utf-8', errors='replace')
-        
-        # OZREPORT 속성 추출
-        m = regex.search(r'<OZREPORT\s([^>]+)>', xml_str)
-        paper_width = 842
-        paper_height = 595
-        left_margin = 20
-        top_margin = 15
-        if m:
-            attrs = m.group(1)
-            for k, v in regex.findall(r'(\w+)="([^"]*)"', attrs):
-                if k == "PAPERWIDTH": paper_width = float(v)
-                elif k == "PAPERHEIGHT": paper_height = float(v)
-                elif k == "LEFTMARGIN": left_margin = float(v)
-                elif k == "TOPMARGIN": top_margin = float(v)
-        
-        # 밴드 정보 추출
-        bands = []
-        
-        # PageHeaderBand
-        for m in regex.finditer(r'<OZBAND\s([^>]*BANDTYPE="1"[^>]*)>(.*?)</OZBAND>', xml_str, regex.DOTALL):
-            attrs = m.group(1)
-            content = m.group(2)
-            band_info = _parse_band_attrs(attrs, "PageHeader")
-            band_info["labels"] = _parse_labels(content)
-            bands.append(band_info)
-        
-        # DataBand
-        for m in regex.finditer(r'<OZDATABAND\s([^>]*)>(.*?)</OZDATABAND>', xml_str, regex.DOTALL):
-            attrs = m.group(1)
-            content = m.group(2)
-            band_info = _parse_band_attrs(attrs, "DataBand")
-            band_info["table"] = _parse_table(content)
-            bands.append(band_info)
-        
-        # PageFooterBand
-        for m in regex.finditer(r'<OZBAND\s([^>]*BANDTYPE="9"[^>]*)>(.*?)</OZBAND>', xml_str, regex.DOTALL):
-            attrs = m.group(1)
-            content = m.group(2)
-            band_info = _parse_band_attrs(attrs, "PageFooter")
-            band_info["labels"] = _parse_labels(content)
-            bands.append(band_info)
-        
-        return JSONResponse(content={
-            "filename": filename,
-            "paper_width": paper_width,
-            "paper_height": paper_height,
-            "left_margin": left_margin,
-            "top_margin": top_margin,
-            "bands": bands,
-        })
+        return JSONResponse(content=extract_ozr_layout_from_bytes(filename, data))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/preview-ozr")
+async def preview_uploaded_ozr(file: UploadFile = File(...)):
+    """업로드된 OZR 바이너리를 직접 파싱하여 뷰어용 레이아웃 반환"""
+    if not file.filename.lower().endswith('.ozr'):
+        raise HTTPException(status_code=400, detail="OZR 파일만 업로드 가능합니다.")
+    
+    try:
+        data = await file.read()
+        layout_data = extract_ozr_layout_from_bytes(file.filename, data)
+        return JSONResponse(content=layout_data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OZR 파싱 실패: {str(e)}")
+
+
+def extract_ozr_layout_from_bytes(filename: str, data: bytes) -> dict:
+    """OZR 바이너리에서 XML을 추출하여 뷰어용 레이아웃 JSON으로 변환"""
+    import re as regex
+    
+    xml_str = data[24:].decode('utf-8', errors='replace')
+    
+    # OZREPORT 속성 추출
+    m = regex.search(r'<OZREPORT\s([^>]+)>', xml_str)
+    paper_width = 842
+    paper_height = 595
+    left_margin = 20
+    top_margin = 15
+    if m:
+        attrs = m.group(1)
+        for k, v in regex.findall(r'(\w+)="([^"]*)"', attrs):
+            if k == "PAPERWIDTH": paper_width = float(v)
+            elif k == "PAPERHEIGHT": paper_height = float(v)
+            elif k == "LEFTMARGIN": left_margin = float(v)
+            elif k == "TOPMARGIN": top_margin = float(v)
+    
+    # 밴드 정보 추출
+    bands = []
+    
+    # PageHeaderBand
+    for m in regex.finditer(r'<OZBAND\s([^>]*BANDTYPE="1"[^>]*)>(.*?)</OZBAND>', xml_str, regex.DOTALL):
+        attrs = m.group(1)
+        content = m.group(2)
+        band_info = _parse_band_attrs(attrs, "PageHeader")
+        band_info["labels"] = _parse_labels(content)
+        bands.append(band_info)
+    
+    # DataBand
+    for m in regex.finditer(r'<OZDATABAND\s([^>]*)>(.*?)</OZDATABAND>', xml_str, regex.DOTALL):
+        attrs = m.group(1)
+        content = m.group(2)
+        band_info = _parse_band_attrs(attrs, "DataBand")
+        band_info["table"] = _parse_table(content)
+        bands.append(band_info)
+    
+    # PageFooterBand
+    for m in regex.finditer(r'<OZBAND\s([^>]*BANDTYPE="9"[^>]*)>(.*?)</OZBAND>', xml_str, regex.DOTALL):
+        attrs = m.group(1)
+        content = m.group(2)
+        band_info = _parse_band_attrs(attrs, "PageFooter")
+        band_info["labels"] = _parse_labels(content)
+        bands.append(band_info)
+    
+    return {
+        "filename": filename,
+        "paper_width": paper_width,
+        "paper_height": paper_height,
+        "left_margin": left_margin,
+        "top_margin": top_margin,
+        "bands": bands,
+    }
 
 
 def _parse_band_attrs(attrs: str, band_type: str) -> dict:
