@@ -86,6 +86,7 @@ def parse_xlsx(filepath) -> dict:
     
     for r in range(1, max_row + 1):
         for c in range(1, max_col_candidate + 1):
+            is_vertically_merged = False
             if (r, c) in merged_map:
                 mr = merged_map[(r, c)]
                 # 병합된 영역의 Top-Left 셀이 아니면 무시 (그리기 중복 방지)
@@ -97,6 +98,9 @@ def parse_xlsx(filepath) -> dict:
                 top = row_y_offsets[mr.min_row - 1]
                 width = col_x_offsets[mr.max_col] - left
                 height = row_y_offsets[mr.max_row] - top
+                
+                if mr.max_row > mr.min_row and mr.max_col == mr.min_col:
+                    is_vertically_merged = True
             else:
                 left = col_x_offsets[c - 1]
                 top = row_y_offsets[r - 1]
@@ -125,8 +129,10 @@ def parse_xlsx(filepath) -> dict:
                 "bold": cell.font.bold if cell.font else False,
                 "font_size": cell.font.size if cell.font and cell.font.size else 10,
                 "h_align": _map_h_align(cell.alignment.horizontal if cell.alignment else "left"),
+                "v_align": _map_v_align(cell.alignment.vertical if cell.alignment else "center"),
                 "has_border": has_border,
-                "bg_color": bg_color
+                "bg_color": bg_color,
+                "vertically_merged": is_vertically_merged
             })
             
     # 영역 분류 (Data Row 찾기: <DATASET:COLNAME> 패턴이 있는 행)
@@ -179,13 +185,29 @@ def parse_xlsx(filepath) -> dict:
             data_x_bounds.add(round(c["left"], 1))
             data_x_bounds.add(round(c["left"] + c["width"], 1))
             
-    table_header_start = data_row_num
+    # 데이터 행(data_row_num) 위쪽으로 스캔하여 Table Header 영역 찾기
+    # 1) Dataset 바로 위의 빈 행들 무시
+    current_r = data_row_num - 1
+    while current_r > 0:
+        if current_r in repeating_rows:
+            current_r -= 1
+            continue
+        row_cells = [c for c in cells_data if c["row"] == current_r]
+        if not row_cells:
+            current_r -= 1
+            continue
+        break
+        
+    table_header_start = current_r + 1 if current_r < data_row_num - 1 else data_row_num
     
-    for r in range(data_row_num - 1, 0, -1):
+    for r in range(current_r, 0, -1):
         if r in repeating_rows:
             continue
             
         row_cells = [c for c in cells_data if c["row"] == r]
+        if not row_cells:
+            break
+            
         has_borders = any(c["has_border"] for c in row_cells)
         if not has_borders:
             break
@@ -203,9 +225,8 @@ def parse_xlsx(filepath) -> dict:
         else:
             match_ratio = 1.0
             
-        # 일치율이 50% 미만이면 Page Header 영역의 큰 병합셀이라고 간주하고 TableHeader 편입 중단
-        is_first_header_row = (table_header_start == data_row_num)
-        if not is_first_header_row and match_ratio < 0.5:
+        # 일치율이 25% 미만이면 Page Header 영역이라고 간주
+        if r < current_r and match_ratio < 0.25:
             break
             
         table_header_start = r
@@ -246,8 +267,10 @@ def parse_xlsx(filepath) -> dict:
         r = c["row"]
         if r < table_header_start:
             header_cells.append(c)
-        elif table_header_start <= r < data_row_num:
+        elif table_header_start <= r <= current_r:
             table_header_cells.append(c)
+        elif current_r < r < data_row_num:
+            pass # Ignore gap rows
         elif r == data_row_num:
             table_data_cells.append(c)
         elif r >= footer_start:
@@ -264,10 +287,19 @@ def parse_xlsx(filepath) -> dict:
     
     # DataBand 테이블의 Y 좌표 보정 (Table Header부터 0)
     table_start_y = row_y_offsets[table_header_start - 1]
-    for c in table_header_cells + table_data_cells:
+    max_header_bottom = 0.0
+    for c in table_header_cells:
         c["top"] -= table_start_y
+        bottom = c["top"] + c["height"]
+        if bottom > max_header_bottom:
+            max_header_bottom = bottom
+            
+    # 데이터 행을 헤더 타이틀 바로 아래(max_header_bottom)에 밀착 배치 (R25 사양)
+    data_row_h = table_data_cells[0]["height"] if table_data_cells else 20.0
+    for c in table_data_cells:
+        c["top"] = max_header_bottom
         
-    body_height = row_y_offsets[data_row_num] - table_start_y
+    body_height = max_header_bottom + data_row_h
     
     result = {
         "sheet_name": ws.title,
@@ -320,6 +352,11 @@ def _map_h_align(align_str: str) -> str:
     # 0=left, 1=center, 2=right
     mapping = {"left": "0", "center": "1", "right": "2", "general": "0"}
     return mapping.get(str(align_str).lower(), "0")
+
+def _map_v_align(align_str: str) -> str:
+    # 0=top, 1=center, 2=bottom
+    mapping = {"top": "0", "center": "1", "middle": "1", "bottom": "2"}
+    return mapping.get(str(align_str).lower(), "1")
 
 def get_xlsx_summary(parsed: dict) -> dict:
     """파싱 결과의 요약 정보를 반환합니다."""

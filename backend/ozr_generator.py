@@ -56,6 +56,7 @@ def _build_static_table_labels(labels: list, prefix: str) -> str:
         width = round(lbl.get("width", 100), 3)
         height = round(lbl.get("height", 20), 3)
         h_align = lbl.get("h_align", "0")
+        v_align = lbl.get("v_align", "1")
         font_size = lbl.get("font_size", 10)
         font_style = "1" if lbl.get("bold") else "0"
         
@@ -67,7 +68,7 @@ def _build_static_table_labels(labels: list, prefix: str) -> str:
             f'WIDTH="{width}" HEIGHT="{height}" '
             f'DASHOFFSETLEFT="0" DASHOFFSETTOP="0" DASHOFFSETRIGHT="0" DASHOFFSETBOTTOM="0" '
             f'{border_attrs}{bg_color_attr}'
-            f'FONTSIZE="{font_size}" FONTSTYLE="{font_style}" HALIGN="{h_align}">'
+            f'FONTSIZE="{font_size}" FONTSTYLE="{font_style}" HALIGN="{h_align}" VALIGN="{v_align}">'
             f'{text}</OZTABLELABEL>'
         )
     return "\r\n".join(xml)
@@ -101,22 +102,29 @@ def _build_data_band_with_table(body_config: dict, content_width: float, odi_nam
     
     titles_xml = []
     for idx, lbl in enumerate(title_labels):
-        text = escape_xml(lbl.get("text", ""))
+        raw_text = lbl.get("text", "")
+        text = escape_xml(raw_text)
+        if lbl.get("vertically_merged") and raw_text and " " not in raw_text and "\n" not in raw_text:
+            text = "&#xD;&#xA;".join(list(text))
         left = round(lbl.get("left", 0), 3)
         top = round(lbl.get("top", 0), 3)
         width = round(lbl.get("width", 100), 3)
         h = round(lbl.get("height", 20), 3)
-        h_align = lbl.get("h_align", "0")
+        h_align = lbl.get("h_align", "1")
+        v_align = lbl.get("v_align", "1")
+        font_size = lbl.get("font_size", 10)
+        font_style = "1" if lbl.get("bold") else "0"
         
         border_attrs = 'DRAWLEFT="1" DRAWTOP="1" DRAWRIGHT="1" DRAWBOTTOM="1" ' if lbl.get("has_border") else 'DRAWLEFT="0" DRAWTOP="0" DRAWRIGHT="0" DRAWBOTTOM="0" '
         bg_color_attr = f'BGCOLOR="-5186329" ' if lbl.get("bg_color") != "none" else ""
+        stretch_attr = 'STRETCHTYPE="5" HSTRETCH="false" VSTRETCH="false" ' if width < 22 else ""
         
         titles_xml.append(
             f'<OZTTLABEL NAME="TableTitle{idx + 1}" LEFT="{left}" TOP="{top}" '
             f'WIDTH="{width}" HEIGHT="{h}" '
-            f'{bg_color_attr}{border_attrs}'
+            f'{bg_color_attr}{border_attrs}{stretch_attr}'
             f'DASHOFFSETLEFT="0" DASHOFFSETTOP="0" DASHOFFSETRIGHT="0" DASHOFFSETBOTTOM="0" '
-            f'HALIGN="{h_align}" TABLEINDEX="{idx}">{text}</OZTTLABEL>'
+            f'FONTSIZE="{font_size}" FONTSTYLE="{font_style}" HALIGN="{h_align}" VALIGN="{v_align}" TABLEINDEX="{idx}">{text}</OZTTLABEL>'
         )
         
     values_xml = []
@@ -131,6 +139,9 @@ def _build_data_band_with_table(body_config: dict, content_width: float, odi_nam
         width = round(lbl.get("width", 100), 3)
         h = round(lbl.get("height", 20), 3)
         h_align = lbl.get("h_align", "0")
+        v_align = lbl.get("v_align", "1")
+        font_size = lbl.get("font_size", 10)
+        font_style = "1" if lbl.get("bold") else "0"
         
         border_attrs = 'DRAWLEFT="1" DRAWTOP="1" DRAWRIGHT="1" DRAWBOTTOM="1" ' if lbl.get("has_border") else 'DRAWLEFT="0" DRAWTOP="0" DRAWRIGHT="0" DRAWBOTTOM="0" '
         
@@ -162,8 +173,8 @@ def _build_data_band_with_table(body_config: dict, content_width: float, odi_nam
             f'COLNAME="{col_name}" '
             f'{border_attrs}'
             f'DASHOFFSETLEFT="0" DASHOFFSETTOP="0" DASHOFFSETRIGHT="0" DASHOFFSETBOTTOM="0" '
-            f'HALIGN="{h_align}" '
-            f'AUTOSIZE="true" AUTOFONTSIZE="smallerOnly" NULLTYPE="5" '
+            f'FONTSIZE="{font_size}" FONTSTYLE="{font_style}" HALIGN="{h_align}" VALIGN="{v_align}" '
+            f'AUTOSIZE="false" AUTOFONTSIZE="smallerOnly" NULLTYPE="5" '
             f'PRIORLABELNAME="Root" TABLEINDEX="{idx}">{col_name}</OZGROUPLABEL>'
         )
         
